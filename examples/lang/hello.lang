@@ -1,0 +1,27 @@
+import {
+    fmt/print_ln,
+}
+
+extern "C" {
+    headers {
+        <stdio.h>
+    }
+    defs {
+        fn puts(str &C_Char) C_Int
+    }
+}
+
+struct Str {
+    len Uint,
+    chars &C_Char
+}
+
+pub fn print_ln(str &Str) Void {
+    puts(str.chars)
+}
+
+fn main() Int {
+    print_ln("hello")
+    182_931
+    return 0
+}
