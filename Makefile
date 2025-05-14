@@ -1,5 +1,5 @@
 CC      = gcc
-CFLAGS  = -Wall -Wextra -pedantic -O3 -fuse-ld=mold
+CFLAGS  = -Wall -Wextra -pedantic -O3 -fuse-ld=mold -ljansson
 TARGET  = lang
 
 SRCDIR   = src

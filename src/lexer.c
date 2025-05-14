@@ -2,6 +2,7 @@
 #include "arena.h"
 #include "mod.h"
 #include <ctype.h>
+#include <jansson.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -89,17 +90,12 @@ char *token_type_to_str(enum TokenType token_type) {
     return "Unknown";
   }
 }
-int print_str(struct ModParser *mod_parser, FILE *out_stream,
-              struct ArenaPointer *str_ptr) {
-  if (str_ptr == NULL) {
-    return -1;
+char *arena_str_to_str(struct ModParser *mod_parser,
+                       struct ArenaPointer *str_ptr) {
+  if (mod_parser == NULL || str_ptr == NULL) {
+    return NULL;
   }
-  for (int i = 0; i < str_ptr->len; i++) {
-    char *char_ptr =
-        mod_parser->arena.start + str_ptr->offset + (i * sizeof(char));
-    fprintf(out_stream, "%c", *char_ptr);
-  }
-  return 0;
+  return mod_parser->arena.start + str_ptr->offset;
 }
 
 const int KeyWords[] = {
@@ -114,9 +110,8 @@ int token_to_json(struct ModParser *mod_parser, FILE *out_stream,
   if (token == NULL) {
     return -1;
   }
-  fprintf(out_stream,
-          "{\"starts_at\": %d, \"len\": %d,\"kind\":\"%s\", \"contents\": ",
-          token->starts_at, token->len, token_type_to_str(token->kind));
+  json_t *json_contents = {0};
+  json_contents = json_pack("s", "initial");
   switch (token->kind) {
   case TokenType_ImportKeyWord:
   case TokenType_ExternKeyWord:
@@ -127,86 +122,59 @@ int token_to_json(struct ModParser *mod_parser, FILE *out_stream,
   case TokenType_FnKeyWord:
   case TokenType_HeadersKeyWord:
   case TokenType_DefsKeyWord:
-    fprintf(out_stream, "null");
+  case TokenType_BracketOpen:
+  case TokenType_BracketClose:
+  case TokenType_SquareBracketOpen:
+  case TokenType_SquareBracketClose:
+  case TokenType_CurlyBracketOpen:
+  case TokenType_CurlyBracketClose:
+  case TokenType_Comma:
+  case TokenType_Dot:
+  case TokenType_Amp:
+  case TokenType_Plus:
+  case TokenType_Minus:
+  case TokenType_Times:
+  case TokenType_Divide:
+  case TokenType_Assign:
+  case TokenType_Equiv:
+    json_contents = json_pack("n");
     break;
   case TokenType_Int:
-    fprintf(out_stream, "%d", token->contents.int_val);
+    json_contents = json_pack("i", token->contents.int_val);
     break;
   case TokenType_Str:
-    fprintf(out_stream, "\"");
-    print_str(mod_parser, out_stream, &token->contents.arena_pointer);
-    fprintf(out_stream, "\"");
+    json_contents =
+        json_pack("s", arena_str_to_str(mod_parser, &token->contents.arena_pointer)); // TODO: wrapp in quotes
     break;
   case TokenType_Ident:
-    fprintf(out_stream, "\"");
-    print_str(mod_parser, out_stream, &token->contents.arena_pointer);
-    fprintf(out_stream, "\"");
+    json_contents = json_pack("s", arena_str_to_str(mod_parser, &token->contents.arena_pointer));
     break;
-  // TokenType_BracketOpen,
-  // TokenType_BracketClose,
-  // TokenType_SquareBracketOpen,
-  // TokenType_SquareBracketClose,
-  // TokenType_CurlyBracketOpen,
-  // TokenType_CurlyBracketClose,
-  // TokenType_Comma,
-  // TokenType_Amp,
-  // TokenType_Plus,
-  // TokenType_Minus,
-  // TokenType_Times,
-  // TokenType_Divide,
-  // TokenType_Assign,
-  // TokenType_Equiv,
   default:
-    fprintf(out_stream, "\"UNKNOWN\"");
+    json_contents = json_pack("s", "UNKNOWN");
   }
-  fprintf(out_stream, "}\n");
+  int print_res = json_dumpf(
+      json_pack("{s: i, s: i, s: s, s, o}\n", "starts_at", token->starts_at,
+                "len", token->len, "kind", token_type_to_str(token->kind),
+                "contents", json_contents),
+      out_stream, 0);
+  puts("");
   return 0;
 }
 
-struct FileCharIter {
-  FILE *in_stream;
-  size_t chunk_size;
-  char *buffer;
-  size_t offset;
-  size_t read_count;
-};
-int file_char_iter_next(struct FileCharIter *file_char_iter) {
-  // printf("file_char_iter_next: offset: %zu, read_count %zu, chunk_size: %zu\n",
-  //        file_char_iter->offset, file_char_iter->read_count,
-  //        file_char_iter->chunk_size);
-  if (file_char_iter->offset >= file_char_iter->chunk_size) {
-      puts("doing fread");
-    file_char_iter->read_count =
-        fread(file_char_iter->buffer, file_char_iter->chunk_size, 1,
-                       file_char_iter->in_stream);
-    file_char_iter->offset = 0;
-    if (file_char_iter->read_count == 0) {
-        exit(-1);
-      return -1;
-    }
-  }
-  //   size_t buffer_read = fread_unlocked(buffer, BUF_READ_SIZE, 1, in_stream);
-  int res = file_char_iter->buffer[file_char_iter->offset];
-  file_char_iter->offset++;
-  return res;
-}
-
-#define BUF_READ_SIZE 100
 int lex_file(FILE *in_stream, struct ModParser *mod_parser) {
-  struct FileCharIter char_iter = {
-      .in_stream = in_stream,
-      .chunk_size = BUF_READ_SIZE,
-      .buffer = malloc(BUF_READ_SIZE),
-      .offset = 0,
-      .read_count = 0,
-  };
-  char_iter.read_count = fread(char_iter.buffer, char_iter.chunk_size,
-                                        1, char_iter.in_stream);
+  // for simplicity, read the entire src file to a string,
+  // this wont scale but it will work for now
+  fseek(in_stream, 0, SEEK_END);
+  long int file_size = ftell(in_stream);
+  char *src_code = malloc(file_size);
+  fseek(in_stream, 0, SEEK_SET);
+  fread(src_code, file_size, 1, in_stream);
   int cur_char = 1;
   uint at = -1;
   while (cur_char != '\0') {
     at++;
-    cur_char = file_char_iter_next(&char_iter);
+    cur_char = src_code[at];
+    if(cur_char == '\0') break;
     struct Token tok = {.starts_at = at,
                         .len = 1,
                         tok.kind = TokenType_BracketOpen,
@@ -280,8 +248,7 @@ int lex_file(FILE *in_stream, struct ModParser *mod_parser) {
       vec_token_push(mod_parser->tokens, tok);
       continue;
     case '=': {
-      // TODO: This wont handle if the peek is at the end of the buffer
-      char next_char = char_iter.buffer[char_iter.offset + 1];
+      char next_char = src_code[at + 1];
       if (next_char == '=') {
         at++;
         tok.kind = TokenType_Equiv;
@@ -311,7 +278,7 @@ int lex_file(FILE *in_stream, struct ModParser *mod_parser) {
 
       while (str_char != EOF) {
         str_len++;
-        str_char = file_char_iter_next(&char_iter);
+        str_char = src_code[at + str_len];
         if (str_char == '_') {
           continue;
         }
@@ -351,7 +318,7 @@ int lex_file(FILE *in_stream, struct ModParser *mod_parser) {
 
       while (str_char != EOF) {
         str_len++;
-        str_char = file_char_iter_next(&char_iter);
+        str_char = src_code[at + str_len];
         if (!isalpha(str_char) && !isdigit(str_char) && str_char != '_') {
           break;
         }
@@ -391,8 +358,7 @@ int lex_file(FILE *in_stream, struct ModParser *mod_parser) {
       int arena_start_offset = mod_parser->arena.offset;
       while (str_char != EOF) {
         str_len++;
-        // str_char = buffer[at + str_len];
-        str_char = file_char_iter_next(&char_iter);
+        str_char = src_code[at + str_len];
         if (str_char == '"') {
           break;
         }
@@ -414,232 +380,14 @@ int lex_file(FILE *in_stream, struct ModParser *mod_parser) {
       continue;
     }
 
-    printf("{\"error\": \"unhandled_char\", \"char\": \"%c\", \"int\": %d}\n",
-           cur_char, cur_char);
+    json_dumpf(json_pack("{s: s, s: s, s:i}\n", "error", "unhandled_char",
+                         "char", &cur_char, "int", cur_char),
+               stdout, 0);
+    puts("");
   }
-  free(char_iter.buffer);
-  puts("{\"msg\":\"finished lexing\"}");
-  // print_arena_state(mod_parser);
+  json_dumpf(json_pack("{s: s}", "msg", "finished lexing"), stdout, 0);
+  puts("");
+
+  free(src_code);
   return 0;
 }
-// int lex_file(FILE *in_stream, struct ModParser *mod_parser) {
-//   int cur_char = 1;
-//   uint at = -1;
-//   char buffer[BUF_READ_SIZE] = {0};
-//   size_t buffer_read = fread_unlocked(buffer, BUF_READ_SIZE, 1, in_stream);
-//   while (cur_char != '\0') {
-//     at++;
-//     cur_char = buffer[at];
-//     struct Token tok = {.starts_at = at,
-//                         .len = 1,
-//                         tok.kind = TokenType_BracketOpen,
-//                         tok.contents = (union TokenContents){.null = NULL}};
-//     switch (cur_char) {
-//     case '\n':
-//       continue;
-//     case '(':
-//       tok.kind = TokenType_BracketOpen;
-//       token_to_json(mod_parser, stdout, &tok);
-//       vec_token_push(mod_parser->tokens, tok);
-//       continue;
-//     case ')':
-//       tok.kind = TokenType_BracketClose;
-//       token_to_json(mod_parser, stdout, &tok);
-//       vec_token_push(mod_parser->tokens, tok);
-//       continue;
-//     case '[':
-//       tok.kind = TokenType_SquareBracketOpen;
-//       token_to_json(mod_parser, stdout, &tok);
-//       vec_token_push(mod_parser->tokens, tok);
-//       continue;
-//     case ']':
-//       tok.kind = TokenType_SquareBracketClose;
-//       token_to_json(mod_parser, stdout, &tok);
-//       vec_token_push(mod_parser->tokens, tok);
-//       continue;
-//     case '{':
-//       tok.kind = TokenType_CurlyBracketOpen;
-//       token_to_json(mod_parser, stdout, &tok);
-//       vec_token_push(mod_parser->tokens, tok);
-//       continue;
-//     case '}':
-//       tok.kind = TokenType_CurlyBracketClose;
-//       token_to_json(mod_parser, stdout, &tok);
-//       vec_token_push(mod_parser->tokens, tok);
-//       continue;
-//     case ',':
-//       tok.kind = TokenType_Comma;
-//       token_to_json(mod_parser, stdout, &tok);
-//       vec_token_push(mod_parser->tokens, tok);
-//       continue;
-//     case '.':
-//       tok.kind = TokenType_Dot;
-//       token_to_json(mod_parser, stdout, &tok);
-//       vec_token_push(mod_parser->tokens, tok);
-//       continue;
-//     case '&':
-//       tok.kind = TokenType_Amp;
-//       token_to_json(mod_parser, stdout, &tok);
-//       vec_token_push(mod_parser->tokens, tok);
-//       continue;
-//     case '+':
-//       tok.kind = TokenType_Plus;
-//       token_to_json(mod_parser, stdout, &tok);
-//       vec_token_push(mod_parser->tokens, tok);
-//       continue;
-//     case '-':
-//       tok.kind = TokenType_Minus;
-//       token_to_json(mod_parser, stdout, &tok);
-//       vec_token_push(mod_parser->tokens, tok);
-//       continue;
-//     case '*':
-//       tok.kind = TokenType_Times;
-//       token_to_json(mod_parser, stdout, &tok);
-//       vec_token_push(mod_parser->tokens, tok);
-//       continue;
-//     case '/':
-//       tok.kind = TokenType_Divide;
-//       token_to_json(mod_parser, stdout, &tok);
-//       vec_token_push(mod_parser->tokens, tok);
-//       continue;
-//     case '=': {
-//       char next_char = buffer[at + 1];
-//       if (next_char == '=') {
-//         at++;
-//         tok.kind = TokenType_Equiv;
-//       } else {
-//         tok.kind = TokenType_Assign;
-//       }
-//       token_to_json(mod_parser, stdout, &tok);
-//       vec_token_push(mod_parser->tokens, tok);
-//       continue;
-//     }
-//     }
-//     if (cur_char == '\n') {
-//
-//       continue;
-//     } else if (isspace(cur_char)) {
-//       continue;
-//     }
-//     if (isdigit(cur_char)) {
-//       int str_start = at;
-//       int str_len = 0;
-//       int str_char = 0;
-//       int arena_start_offset = mod_parser->arena.offset;
-//
-//       ((char *)(mod_parser->arena.start + mod_parser->arena.offset))[0] =
-//           cur_char;
-//       mod_parser->arena.offset += sizeof(char);
-//
-//       while (str_char != EOF) {
-//         str_len++;
-//         str_char = buffer[at + str_len];
-//         if (str_char == '_') {
-//           continue;
-//         }
-//         if (!isdigit(str_char)) {
-//           break;
-//         }
-//
-//         ((char *)(mod_parser->arena.start + mod_parser->arena.offset))[0] =
-//             str_char;
-//         mod_parser->arena.offset += sizeof(char);
-//       }
-//       at += str_len - 1;
-//       struct ArenaPointer str = {
-//           .offset = arena_start_offset,
-//           .len = str_len * sizeof(char),
-//       };
-//       char *str_ptr = arena_get_pointer(&mod_parser->arena, str.offset);
-//       int int_val = strtol(str_ptr, NULL, 10);
-//       struct Token tok = {.starts_at = str_start,
-//                           .len = str_len,
-//                           tok.kind = TokenType_Int,
-//                           tok.contents =
-//                               (union TokenContents){.int_val = int_val}};
-//       token_to_json(mod_parser, stdout, &tok);
-//       vec_token_push(mod_parser->tokens, tok);
-//       continue;
-//     }
-//     if (isalpha(cur_char)) {
-//       int str_start = at;
-//       int str_len = 0;
-//       int str_char = 0;
-//       int arena_start_offset = mod_parser->arena.offset;
-//
-//       ((char *)(mod_parser->arena.start + mod_parser->arena.offset))[0] =
-//           cur_char;
-//       mod_parser->arena.offset += sizeof(char);
-//
-//       while (str_char != EOF) {
-//         str_len++;
-//         str_char = buffer[at + str_len];
-//         if (!isalpha(str_char) && !isdigit(str_char) && str_char != '_') {
-//           break;
-//         }
-//
-//         ((char *)(mod_parser->arena.start + mod_parser->arena.offset))[0] =
-//             str_char;
-//         mod_parser->arena.offset += sizeof(char);
-//       }
-//       at += str_len - 1;
-//       struct ArenaPointer str = {
-//           .offset = arena_start_offset,
-//           .len = str_len * sizeof(char),
-//       };
-//       struct Token tok = {.starts_at = str_start,
-//                           .len = str_len,
-//                           tok.kind = TokenType_Ident,
-//                           tok.contents =
-//                               (union TokenContents){.arena_pointer = str}};
-//       for (int i = 0; i < KEYWORD_COUNT; i++) {
-//         int key_word = KeyWords[i];
-//         if (strcmp(keywords_from_str(key_word),
-//                    mod_parser->arena.start + arena_start_offset) == 0) {
-//           tok.kind = key_word;
-//           tok.contents = (union TokenContents){.null = NULL};
-//         }
-//       }
-//       token_to_json(mod_parser, stdout, &tok);
-//       vec_token_push(mod_parser->tokens, tok);
-//       continue;
-//     }
-//
-//     if (cur_char == '"') {
-//       at++;
-//       int str_start = at;
-//       int str_len = -1;
-//       int str_char = 0;
-//       int arena_start_offset = mod_parser->arena.offset;
-//       while (str_char != EOF) {
-//         str_len++;
-//         str_char = buffer[at + str_len];
-//         if (str_char == '"') {
-//           break;
-//         }
-//         ((char *)(mod_parser->arena.start + mod_parser->arena.offset))[0] =
-//             str_char;
-//         mod_parser->arena.offset += sizeof(char);
-//       }
-//       at += str_len;
-//       struct ArenaPointer str = {
-//           .offset = arena_start_offset,
-//           .len = str_len * sizeof(char),
-//       };
-//       struct Token tok = {.starts_at = str_start,
-//                           .len = str_len,
-//                           .kind = TokenType_Str,
-//                           .contents = {.arena_pointer = str}};
-//       token_to_json(mod_parser, stdout, &tok);
-//       vec_token_push(mod_parser->tokens, tok);
-//       continue;
-//     }
-//
-//     printf("{\"error\": \"unhandled_char\", \"char\": \"%c\", \"int\":
-//     %d}\n",
-//            cur_char, cur_char);
-//   }
-//   puts("{\"msg\":\"finished lexing\"}");
-//   // print_arena_state(mod_parser);
-//   return 0;
-// }
