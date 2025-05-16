@@ -1,5 +1,6 @@
 #include "lexer.h"
 #include "arena.h"
+#include "error.h"
 #include "mod.h"
 #include <ctype.h>
 #include <jansson.h>
@@ -143,19 +144,23 @@ int token_to_json(struct ModParser *mod_parser, FILE *out_stream,
     json_contents = json_pack("i", token->contents.int_val);
     break;
   case TokenType_Str:
-    json_contents =
-        json_pack("s", arena_str_to_str(mod_parser, &token->contents.arena_pointer)); // TODO: wrapp in quotes
+    json_contents = json_pack(
+        "s", arena_str_to_str(
+                 mod_parser,
+                 &token->contents.arena_pointer)); // TODO: wrapp in quotes
     break;
   case TokenType_Ident:
-    json_contents = json_pack("s", arena_str_to_str(mod_parser, &token->contents.arena_pointer));
+    json_contents = json_pack(
+        "s", arena_str_to_str(mod_parser, &token->contents.arena_pointer));
     break;
   default:
     json_contents = json_pack("s", "UNKNOWN");
   }
   int print_res = json_dumpf(
-      json_pack("{s: i, s: i, s: s, s, o}\n", "starts_at", token->starts_at,
-                "len", token->len, "kind", token_type_to_str(token->kind),
-                "contents", json_contents),
+      json_pack("{s: i, s: I, s: I, s: i, s: s, s, o}\n", "starts_at",
+                token->starts_at, "row", (long long)token->row, "col",
+                (long long)token->col, "len", token->len, "kind",
+                token_type_to_str(token->kind), "contents", json_contents),
       out_stream, 0);
   puts("");
   return 0;
@@ -171,16 +176,24 @@ int lex_file(FILE *in_stream, struct ModParser *mod_parser) {
   fread(src_code, file_size, 1, in_stream);
   int cur_char = 1;
   uint at = -1;
+  unsigned long row = 0;
+  unsigned long col = -1;
   while (cur_char != '\0') {
     at++;
+    col++;
     cur_char = src_code[at];
-    if(cur_char == '\0') break;
+    if (cur_char == '\0')
+      break;
     struct Token tok = {.starts_at = at,
+                        .row = row,
+                        .col = col,
                         .len = 1,
                         tok.kind = TokenType_BracketOpen,
                         tok.contents = (union TokenContents){.null = NULL}};
     switch (cur_char) {
     case '\n':
+      row++;
+      col = 0;
       continue;
     case '(':
       tok.kind = TokenType_BracketOpen;
@@ -251,6 +264,7 @@ int lex_file(FILE *in_stream, struct ModParser *mod_parser) {
       char next_char = src_code[at + 1];
       if (next_char == '=') {
         at++;
+        col++;
         tok.kind = TokenType_Equiv;
       } else {
         tok.kind = TokenType_Assign;
@@ -268,6 +282,7 @@ int lex_file(FILE *in_stream, struct ModParser *mod_parser) {
     }
     if (isdigit(cur_char)) {
       int str_start = at;
+      unsigned long col_start = col;
       int str_len = 0;
       int str_char = 0;
       int arena_start_offset = mod_parser->arena.offset;
@@ -291,6 +306,8 @@ int lex_file(FILE *in_stream, struct ModParser *mod_parser) {
         mod_parser->arena.offset += sizeof(char);
       }
       at += str_len - 1;
+      col += str_len - 1;
+
       struct ArenaPointer str = {
           .offset = arena_start_offset,
           .len = str_len * sizeof(char),
@@ -298,6 +315,8 @@ int lex_file(FILE *in_stream, struct ModParser *mod_parser) {
       char *str_ptr = arena_get_pointer(&mod_parser->arena, str.offset);
       int int_val = strtol(str_ptr, NULL, 10);
       struct Token tok = {.starts_at = str_start,
+                          .row = row,
+                          .col = col_start,
                           .len = str_len,
                           tok.kind = TokenType_Int,
                           tok.contents =
@@ -308,6 +327,7 @@ int lex_file(FILE *in_stream, struct ModParser *mod_parser) {
     }
     if (isalpha(cur_char)) {
       int str_start = at;
+      unsigned long col_start = col;
       int str_len = 0;
       int str_char = 0;
       int arena_start_offset = mod_parser->arena.offset;
@@ -328,11 +348,14 @@ int lex_file(FILE *in_stream, struct ModParser *mod_parser) {
         mod_parser->arena.offset += sizeof(char);
       }
       at += str_len - 1;
+      col += str_len - 1;
       struct ArenaPointer str = {
           .offset = arena_start_offset,
           .len = str_len * sizeof(char),
       };
       struct Token tok = {.starts_at = str_start,
+                          .row = row,
+                          .col = col_start,
                           .len = str_len,
                           tok.kind = TokenType_Ident,
                           tok.contents =
@@ -353,26 +376,35 @@ int lex_file(FILE *in_stream, struct ModParser *mod_parser) {
     if (cur_char == '"') {
       at++;
       int str_start = at;
+      unsigned long row_start = row;
+      unsigned long col_start = col;
       int str_len = -1;
       int str_char = 0;
       int arena_start_offset = mod_parser->arena.offset;
       while (str_char != EOF) {
         str_len++;
-        str_char = src_code[at + str_len];
+        str_char = src_code[at];
         if (str_char == '"') {
           break;
+        }
+        at++;
+        col++;
+        if (str_char == '\n') {
+          row++;
+          col = 0;
         }
         ((char *)(mod_parser->arena.start + mod_parser->arena.offset))[0] =
             str_char;
         mod_parser->arena.offset += sizeof(char);
       }
-      at += str_len;
       struct ArenaPointer str = {
           .offset = arena_start_offset,
           .len = str_len * sizeof(char),
       };
       struct Token tok = {.starts_at = str_start,
-                          .len = str_len,
+                          .row = row,
+                          .col = col_start,
+                          .len = str_len + 2,
                           .kind = TokenType_Str,
                           .contents = {.arena_pointer = str}};
       token_to_json(mod_parser, stdout, &tok);
@@ -380,6 +412,17 @@ int lex_file(FILE *in_stream, struct ModParser *mod_parser) {
       continue;
     }
 
+    int msg_len = get_string_size("Unhandled char case `%c`\n", cur_char);
+    char *msg = malloc(msg_len);
+    snprintf(msg, msg_len, "Unhandled char case `%c`\n", cur_char);
+    vec_error_push(mod_parser->errs, (struct Error){
+                                         .at = at,
+                                         .row = row,
+                                         .col = col,
+                                         .msg = msg,
+                                         .context = "lexing",
+                                         .len = 1,
+                                     });
     json_dumpf(json_pack("{s: s, s: s, s:i}\n", "error", "unhandled_char",
                          "char", &cur_char, "int", cur_char),
                stdout, 0);

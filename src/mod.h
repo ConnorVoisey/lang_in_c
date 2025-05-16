@@ -7,7 +7,10 @@
 
 struct ModParser {
   struct Arena arena;
-  struct VecToken* tokens;
+  struct VecToken *tokens;
+  struct VecError *errs;
 };
 
+void mod_parser_render_errs(struct ModParser *vec, FILE *src);
+int get_string_size(const char *fmt, ...);
 #endif

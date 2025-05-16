@@ -17,10 +17,9 @@ void vec_destruct(struct VecToken *vec) {
 void vec_token_push(struct VecToken *vec, struct Token token) {
   if (vec->length == vec->capacity) {
     // need to expand capacity, for now just double
-    int old_capacity = vec->capacity;
     vec->capacity *= 2;
     vec->data = realloc(vec->data, vec->capacity * sizeof(struct Token));
   }
   vec->data[vec->length] = token;
-  vec->length ++;
+  vec->length++;
 }

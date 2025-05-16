@@ -1,4 +1,5 @@
 #include "arena.h"
+#include "error.h"
 #include "lexer.h"
 #include "mod.h"
 #include "vec.h"
@@ -18,9 +19,17 @@ int build() {
   }
 
   struct Arena *arena = arena_create(sizeof(char) * 10000);
-  struct ModParser mod_parser = {.arena = *arena,
-                                 .tokens = vec_token_init(300)};
+  struct ModParser mod_parser = {
+      .arena = *arena,
+      .tokens = vec_token_init(300),
+      .errs = vec_error_init(4),
+  };
+
   lex_file(src_file, &mod_parser);
+  if (mod_parser.errs->length != 0) {
+    mod_parser_render_errs(&mod_parser, src_file);
+    return 1;
+  }
   getrusage(RUSAGE_SELF, &end);
   double duration_ns =
       (double)(end.ru_utime.tv_sec - start.ru_utime.tv_sec) * 1000000 +

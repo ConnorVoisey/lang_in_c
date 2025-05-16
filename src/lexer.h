@@ -45,6 +45,8 @@ union TokenContents {
 
 struct Token {
   uint starts_at;
+  unsigned long row;
+  unsigned long col;
   uint len;
   int kind;
   union TokenContents contents;
