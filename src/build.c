@@ -28,7 +28,7 @@ int build() {
 
   lex_file(src_file, &mod_parser);
   if (mod_parser.errs->length != 0) {
-    mod_parser_render_errs(&mod_parser, src_file);
+    mod_parser_render_errs(&mod_parser, src_file, stderr);
     return 1;
   }
 

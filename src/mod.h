@@ -11,6 +11,6 @@ struct ModParser {
   struct VecError *errs;
 };
 
-void mod_parser_render_errs(struct ModParser *vec, FILE *src);
+void mod_parser_render_errs(struct ModParser *vec, FILE *src, FILE *out_stream);
 int get_string_size(const char *fmt, ...);
 #endif

@@ -35,7 +35,7 @@ const char *clr_yellow = "\033[33m";
 const char *clr_blue = "\033[34m";
 const char *clr_reset = "\033[0m";
 
-int error_print_context(FILE *src, struct Error *err) {
+int error_print_context(FILE *src, struct Error *err, FILE *out_stream) {
   int first_row = err->row - CONTEXT_ROWS;
   if (first_row < 0) {
     first_row = 0;
@@ -51,32 +51,36 @@ int error_print_context(FILE *src, struct Error *err) {
   }
   for (curr_row = first_row; curr_row < err->row + 1; curr_row++) {
     fgets(row_buffer, CONTEXT_LINE_LENGTH, src);
-    printf("%s%*d|%s %s", clr_blue, padding, curr_row + 1, clr_reset,
-           row_buffer);
+    fprintf(out_stream, "%s| %s%*d|%s %s", clr_red, clr_blue, padding,
+            curr_row + 1, clr_reset, row_buffer);
   }
+  fprintf(out_stream, "%s| %s", clr_red, clr_reset);
   for (int i = 0; i < err->col + 3; i++) {
-    putchar(' ');
+    fputc(' ', out_stream);
   }
   for (int i = 0; i < err->len; i++) {
-    printf("%s", clr_yellow);
-    putchar('^');
+    fprintf(out_stream, "%s", clr_yellow);
+    fputc('^', out_stream);
   }
-  printf(" <- here%s\n", clr_reset);
+  fprintf(out_stream, " <- here%s\n", clr_reset);
   for (int i = 0; i < CONTEXT_ROWS; i++) {
     char *get_str = fgets(row_buffer, CONTEXT_LINE_LENGTH, src);
     if (get_str == NULL)
       break;
-    printf("%s%*d|%s %s", clr_blue, padding, curr_row + 1 + i, clr_reset,
-           row_buffer);
+    fprintf(out_stream, "%s| %s%*d|%s %s", clr_red, clr_blue, padding,
+            curr_row + 1, clr_reset, row_buffer);
   }
   return 0;
 }
 
-void mod_parser_render_errs(struct ModParser *mod_parser, FILE *src) {
+void mod_parser_render_errs(struct ModParser *mod_parser, FILE *src,
+                            FILE *out_stream) {
   for (int i = 0; i < mod_parser->errs->length; i++) {
     struct Error err = mod_parser->errs->data[i];
-    printf("\n%sError in %s: %s%s\n", clr_red, err.context, err.msg, clr_reset);
-    printf("at: %lu, row: %u, col: %u\n", err.at, err.row + 1, err.col);
-    error_print_context(src, &err);
+    fprintf(out_stream, "\n%s| Error in %s: %s%s\n", clr_red, err.context,
+            err.msg, clr_reset);
+    fprintf(out_stream, "%s| %sat: %lu, row: %u, col: %u\n", clr_red, clr_reset,
+            err.at, err.row + 1, err.col);
+    error_print_context(src, &err, out_stream);
   }
 }
