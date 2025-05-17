@@ -41,7 +41,6 @@ int error_print_context(FILE *src, struct Error *err) {
     first_row = 0;
   }
   int last_line_num = err->row + CONTEXT_ROWS + 1;
-  int digits = 2;
   char row_buffer[CONTEXT_LINE_LENGTH] = {0};
   int curr_row = 0;
   rewind(src);
