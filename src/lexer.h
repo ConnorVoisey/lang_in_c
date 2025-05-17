@@ -39,6 +39,7 @@ enum TokenType {
   TokenType_LtEq,
   TokenType_Gt,
   TokenType_GtEq,
+  TokenType_SemiColon,
 };
 union TokenContents {
   char *str;

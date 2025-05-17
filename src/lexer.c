@@ -97,6 +97,8 @@ char *token_type_to_str(enum TokenType token_type) {
     return "GreaterThan";
   case TokenType_GtEq:
     return "GreaterThanEq";
+  case TokenType_SemiColon:
+    return "SemiColon";
   default:
     fprintf(stderr, "called token_type_to_str with unknown token type: %d\n",
             token_type);
@@ -154,6 +156,7 @@ int token_to_json(struct ModParser *mod_parser, FILE *out_stream,
   case TokenType_LtEq:
   case TokenType_Gt:
   case TokenType_GtEq:
+  case TokenType_SemiColon:
     json_contents = json_pack("n");
     break;
   case TokenType_Int:
@@ -271,6 +274,11 @@ int lex_file(FILE *in_stream, struct ModParser *mod_parser) {
       continue;
     case '/':
       tok.kind = TokenType_Divide;
+      token_to_json(mod_parser, stdout, &tok);
+      vec_token_push(mod_parser->tokens, tok);
+      continue;
+    case ';':
+      tok.kind = TokenType_SemiColon;
       token_to_json(mod_parser, stdout, &tok);
       vec_token_push(mod_parser->tokens, tok);
       continue;

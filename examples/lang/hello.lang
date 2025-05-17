@@ -7,7 +7,7 @@ extern "C" {
         <stdio.h>
     }
     defs {
-        fn puts(str &C_Char) C_Int
+        fn puts(str &C_Char) C_Int;
     }
 }
 
@@ -17,11 +17,11 @@ struct Str {
 }
 
 fn print_ln(str &Str) Void {
-    puts(str.chars)
+    puts(str.chars);
 }
 
 fn main() Int {
-    print_ln("hello")
-    182_931
-    return 0
+    print_ln("hello");
+    182_931;
+    return 0;
 }
