@@ -35,6 +35,10 @@ enum TokenType {
   TokenType_Divide,
   TokenType_Assign,
   TokenType_Equiv,
+  TokenType_Lt,
+  TokenType_LtEq,
+  TokenType_Gt,
+  TokenType_GtEq,
 };
 union TokenContents {
   char *str;

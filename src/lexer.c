@@ -73,6 +73,8 @@ char *token_type_to_str(enum TokenType token_type) {
     return "CurlyBracketClose";
   case TokenType_Comma:
     return "Comma";
+  case TokenType_Dot:
+    return "Dot";
   case TokenType_Amp:
     return "Amp";
   case TokenType_Plus:
@@ -87,8 +89,18 @@ char *token_type_to_str(enum TokenType token_type) {
     return "Assign";
   case TokenType_Equiv:
     return "Equiv";
+  case TokenType_Lt:
+    return "LessThan";
+  case TokenType_LtEq:
+    return "LessThanEq";
+  case TokenType_Gt:
+    return "GreaterThan";
+  case TokenType_GtEq:
+    return "GreaterThanEq";
   default:
-    return "Unknown";
+    fprintf(stderr, "called token_type_to_str with unknown token type: %d\n",
+            token_type);
+    exit(1);
   }
 }
 char *arena_str_to_str(struct ModParser *mod_parser,
@@ -138,6 +150,10 @@ int token_to_json(struct ModParser *mod_parser, FILE *out_stream,
   case TokenType_Divide:
   case TokenType_Assign:
   case TokenType_Equiv:
+  case TokenType_Lt:
+  case TokenType_LtEq:
+  case TokenType_Gt:
+  case TokenType_GtEq:
     json_contents = json_pack("n");
     break;
   case TokenType_Int:
@@ -145,9 +161,7 @@ int token_to_json(struct ModParser *mod_parser, FILE *out_stream,
     break;
   case TokenType_Str:
     json_contents = json_pack(
-        "s", arena_str_to_str(
-                 mod_parser,
-                 &token->contents.arena_pointer)); // TODO: wrapp in quotes
+        "s", arena_str_to_str(mod_parser, &token->contents.arena_pointer));
     break;
   case TokenType_Ident:
     json_contents = json_pack(
@@ -273,6 +287,32 @@ int lex_file(FILE *in_stream, struct ModParser *mod_parser) {
       vec_token_push(mod_parser->tokens, tok);
       continue;
     }
+    case '<': {
+      char next_char = src_code[at + 1];
+      if (next_char == '=') {
+        at++;
+        col++;
+        tok.kind = TokenType_LtEq;
+      } else {
+        tok.kind = TokenType_Lt;
+      }
+      token_to_json(mod_parser, stdout, &tok);
+      vec_token_push(mod_parser->tokens, tok);
+      continue;
+    }
+    case '>': {
+      char next_char = src_code[at + 1];
+      if (next_char == '=') {
+        at++;
+        col++;
+        tok.kind = TokenType_GtEq;
+      } else {
+        tok.kind = TokenType_Gt;
+      }
+      token_to_json(mod_parser, stdout, &tok);
+      vec_token_push(mod_parser->tokens, tok);
+      continue;
+    }
     }
     if (cur_char == '\n') {
 
@@ -384,6 +424,17 @@ int lex_file(FILE *in_stream, struct ModParser *mod_parser) {
       while (str_char != EOF) {
         str_len++;
         str_char = src_code[at];
+        if (str_char == EOF || str_char == 0) {
+          vec_error_push(mod_parser->errs, (struct Error){
+                                               .at = str_start,
+                                               .row = row_start,
+                                               .col = col_start,
+                                               .msg = "Unclosed string",
+                                               .context = "lexing",
+                                               .len = 1,
+                                           });
+          break;
+        }
         if (str_char == '"') {
           break;
         }
@@ -404,7 +455,7 @@ int lex_file(FILE *in_stream, struct ModParser *mod_parser) {
       struct Token tok = {.starts_at = str_start,
                           .row = row,
                           .col = col_start,
-                          .len = str_len + 2,
+                          .len = str_len + 1,
                           .kind = TokenType_Str,
                           .contents = {.arena_pointer = str}};
       token_to_json(mod_parser, stdout, &tok);

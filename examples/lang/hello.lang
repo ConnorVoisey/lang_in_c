@@ -16,7 +16,7 @@ struct Str {
     chars &C_Char
 }
 
-pub fn print_ln(str &Str) Void {
+fn print_ln(str &Str) Void {
     puts(str.chars)
 }
 

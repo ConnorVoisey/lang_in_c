@@ -2,6 +2,7 @@
 #include "error.h"
 #include "lexer.h"
 #include "mod.h"
+#include "parse/parse.h"
 #include "vec.h"
 #include <stdio.h>
 #include <sys/resource.h>
@@ -30,6 +31,8 @@ int build() {
     mod_parser_render_errs(&mod_parser, src_file);
     return 1;
   }
+
+  parse_tokens(&mod_parser);
   getrusage(RUSAGE_SELF, &end);
   double duration_ns =
       (double)(end.ru_utime.tv_sec - start.ru_utime.tv_sec) * 1000000 +

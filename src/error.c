@@ -64,7 +64,9 @@ int error_print_context(FILE *src, struct Error *err) {
   }
   printf(" <- here%s\n", clr_reset);
   for (int i = 0; i < CONTEXT_ROWS; i++) {
-    fgets(row_buffer, CONTEXT_LINE_LENGTH, src);
+    char *get_str = fgets(row_buffer, CONTEXT_LINE_LENGTH, src);
+    if (get_str == NULL)
+      break;
     printf("%s%*d|%s %s", clr_blue, padding, curr_row + 1 + i, clr_reset,
            row_buffer);
   }
