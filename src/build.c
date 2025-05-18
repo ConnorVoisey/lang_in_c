@@ -33,6 +33,10 @@ int build() {
   }
 
   parse_tokens(&mod_parser);
+  if (mod_parser.errs->length != 0) {
+    mod_parser_render_errs(&mod_parser, src_file, stderr);
+    return 1;
+  }
   getrusage(RUSAGE_SELF, &end);
   double duration_ns =
       (double)(end.ru_utime.tv_sec - start.ru_utime.tv_sec) * 1000000 +
